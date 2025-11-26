@@ -1,0 +1,29 @@
+server:
+  port: 8088
+
+spring:
+  application:
+    name: nexus-ai-backend
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    # ????????? localhost:3307 (?? Docker)
+    url: jdbc:mysql://localhost:3307/nexus_ai?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai
+    username: root
+    password: root  # ?? docker-compose.yml ?? MYSQL_ROOT_PASSWORD
+
+
+langchain4j:
+  open-ai:
+    chat-model:
+      base-url: https://api.deepseek.com/v1
+      api-key: sk-06ed1277282342188cf2b79fab5fc00b
+      model-name: deepseek-chat
+      temperature: 0.7
+      log-requests: true
+      log-responses: true
+
+nexus:
+  milvus:
+    host: localhost
+    port: 19530
+    collection-name: nexus_ai_collection
