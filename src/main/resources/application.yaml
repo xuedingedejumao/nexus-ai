@@ -6,10 +6,9 @@ spring:
     name: nexus-ai-backend
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
-    # ????????? localhost:3307 (?? Docker)
     url: jdbc:mysql://localhost:3307/nexus_ai?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai
     username: root
-    password: root  # ?? docker-compose.yml ?? MYSQL_ROOT_PASSWORD
+    password: root
 
 
 langchain4j:
@@ -17,13 +16,28 @@ langchain4j:
     chat-model:
       base-url: https://api.deepseek.com/v1
       api-key: sk-06ed1277282342188cf2b79fab5fc00b
+
+  deepseek:
+    normal-model:
       model-name: deepseek-chat
-      temperature: 0.7
-      log-requests: true
-      log-responses: true
+      max-retries: 3
+      timeout: 60
+    reasoning-model:
+      model-name: deepseek-reasoner
+      max-retries: 3
+      timeout: 120
+
 
 nexus:
   milvus:
     host: localhost
     port: 19530
     collection-name: nexus_ai_collection
+    dimension: 384
+
+  minio:
+    endpoint: http://localhost:9000
+    access-key: minioadmin
+    secret-key: minioadmin
+    bucket-name: nexus-files
+

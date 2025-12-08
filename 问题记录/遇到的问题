@@ -1,0 +1,10 @@
+1. 在引入tika和minio时遇到循环依赖报错问题，尝试了排除某些包，以及调整依赖版本等等，我询问了ai，ai的回答一直是冲突依赖，并不能解决我的问题。于是我在检查代码，发现是在初始化创建minio桶时递归调用了创建桶的函数，导致栈溢出报错。解决方法是修改初始化桶的逻辑，避免递归调用。
+2. 在开发 NexusAI 的对象存储模块时，我设计了一个‘自愈’机制：希望系统启动时能自动检测 MinIO 中是否存在指定的 Bucket，如果不存在就自动创建。
+
+当时我为了图方便，直接在 MinioConfig 配置类中使用了 @PostConstruct 注解，试图在 Bean 初始化阶段直接调用 minioClient() 方法来执行建桶逻辑。结果程序启动时直接报错，抛出了 BeanCurrentlyInCreationException。
+
+经过分析，我意识到这是一个经典的**循环依赖（Circular Dependency）**场景： Spring 容器正在创建 MinioConfig 这个 Bean，但在它的初始化方法（PostConstruct）执行完成前，我又在方法内部请求获取 minioClient 这个 Bean。而 minioClient 的生产工厂方法又定义在 MinioConfig 里。这就导致了 Spring 陷入了‘先有鸡还是先有蛋’的死锁状态。
+
+我的解决方案是利用 Spring 的事件机制进行解耦： 我弃用了 @PostConstruct，转而实现了一个 ApplicationRunner Bean。 这一改动将‘Bean 的定义与创建’和‘业务逻辑的执行’彻底分离开了。ApplicationRunner 保证了只有在 Spring 容器完全启动、所有 Bean 都加载完毕后，才去执行 Bucket 的检查逻辑。
+
+最终结果：不仅完美解决了循环依赖报错，还提升了系统的启动稳定性，确保了基础设施初始化逻辑不会干扰核心容器的构建过程。”
