@@ -6,7 +6,6 @@ import com.example.nexusai.mapper.ChatHistoryMapper;
 import dev.langchain4j.data.embedding.Embedding;
 import dev.langchain4j.data.segment.TextSegment;
 import dev.langchain4j.model.embedding.EmbeddingModel;
-import dev.langchain4j.store.embedding.EmbeddingMatch;
 import dev.langchain4j.store.embedding.EmbeddingSearchRequest;
 import dev.langchain4j.store.embedding.EmbeddingSearchResult;
 import dev.langchain4j.store.embedding.EmbeddingStore;
@@ -111,11 +110,11 @@ public class RagService {
 
     private void insertChatHistory(String sessionId, String question, String answer, ModelType modelType){
         ChatHistory chatHistory = new ChatHistory()
-                .setSessionId(sessionId)
-                .setQuestion(question)
-                .setAnswer(answer)
-                .setModelType(modelType.getName())
-                .setCreateTime(java.time.LocalDateTime.now());
+                .setSession_id(sessionId)
+                .setUser_query(question)
+                .setAi_answer(answer)
+                .setModel_type(modelType.getName())
+                .setCreate_time(java.time.LocalDateTime.now());
         chatHistoryMapper.insert(chatHistory);
     }
 }

@@ -9,6 +9,11 @@ spring:
     url: jdbc:mysql://localhost:3307/nexus_ai?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai
     username: root
     password: root
+  servlet:
+    multipart:
+      max-file-size: 1000MB      # 单个文件最大限制 (默认1MB)
+      max-request-size: 1000MB   # 整个请求最大限制 (默认10MB)
+      enabled: true
 
 
 langchain4j:
@@ -40,4 +45,16 @@ nexus:
     access-key: minioadmin
     secret-key: minioadmin
     bucket-name: nexus-files
+
+kafka:
+  bootstrap-servers: localhost:9092
+  consumer:
+    group-id: nexus-group # 消费者组ID，同一组的消费者会抢任务
+    auto-offset-reset: earliest # 如果没有偏移量，从头开始读
+    key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+    value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+  producer:
+    key-serialzer: org.apache.kafka.common.serialization.StringSerializer
+    value-serializer: org.apache.kafka.common.serialization.StringSerializer
+
 

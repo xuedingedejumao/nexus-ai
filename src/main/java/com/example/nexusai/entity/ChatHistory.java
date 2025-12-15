@@ -14,9 +14,9 @@ import java.time.LocalDateTime;
 public class ChatHistory {
     @TableId(type = IdType.AUTO)
     private Long id;
-    private String sessionId;
-    private String question;
-    private String answer;
-    private String modelType;
-    private LocalDateTime createTime;
+    private String session_id;
+    private String user_query;
+    private String ai_answer;
+    private String model_type;
+    private LocalDateTime create_time;
 }

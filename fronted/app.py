@@ -39,11 +39,7 @@ with st.sidebar:
     st.markdown("---")
 
     st.markdown("### 2. 知识库投喂")
-    uploaded_file = st.file_uploader(
-        "上传文档 (PDF/Word)",
-        type=['pdf', 'docx', 'txt', 'md'],
-        help="选择文件后点击下方按钮上传"
-    )
+    uploaded_file = st.file_uploader("上传文档 (PDF/Word)", type=['pdf', 'docx', 'doc', 'txt', 'md'])
 
     # 始终显示按钮，但根据状态启用/禁用
     upload_button = st.button(
