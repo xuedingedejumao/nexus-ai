@@ -6,7 +6,7 @@ import time
 
 API_BASE_URL = "http://localhost:8088/api"
 
-st.set_page_config(page_title="NexusAI", page_icon="🤖", layout="centered", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="NexusAI", page_icon="icon.png", layout="centered", initial_sidebar_state="collapsed")
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
@@ -20,7 +20,8 @@ if "uploaded_files" not in st.session_state:
 # ===== 顶部：标题 + 模型选择 =====
 col1, col2 = st.columns([1.2, 1])
 with col1:
-    st.markdown("### 🤖 NexusAI")
+    st.image("icon.png", width=40)
+    st.markdown("### NexusAI")
 with col2:
     model_val = st.selectbox("Model", ["GPT-Normal", "GPT-Reasoning"], label_visibility="collapsed")
     st.session_state.current_model = "NORMAL" if "Normal" in model_val else "REASONING"

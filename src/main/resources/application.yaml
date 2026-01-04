@@ -14,6 +14,10 @@ spring:
       max-file-size: 1000MB      # 单个文件最大限制 (默认1MB)
       max-request-size: 1000MB   # 整个请求最大限制 (默认10MB)
       enabled: true
+  data:
+    redis:
+      host: localhost
+      port: 6379
 
 
 langchain4j:

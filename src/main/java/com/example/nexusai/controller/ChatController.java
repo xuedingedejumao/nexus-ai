@@ -57,9 +57,11 @@ public class ChatController {
     @GetMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter streamChat(
             @RequestParam String query,
-            @RequestParam(required = false) String sessionId
+            @RequestParam(required = false) String sessionId,
+            @RequestParam(defaultValue = "NORMAL") String modelType
     ){
+        ModelType type = ModelType.valueOf(modelType.toUpperCase());
         String finalSessionId = (sessionId == null || sessionId.isEmpty()) ? "default user" : sessionId;
-        return ragService.streamChat(query, finalSessionId);
+        return ragService.streamChat(query, type, finalSessionId);
     }
 }

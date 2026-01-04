@@ -19,8 +19,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.List;
+import java.util.Optional;
+import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
-
 
 @Slf4j
 @Service
@@ -31,6 +32,8 @@ public class RagService {
     private final KnowledgeAgentFactory agentFactory;
     private final ChatHistoryMapper chatHistoryMapper;
     private final StreamKnowledgeAgent streamKnowledgeAgent;
+
+    private final SemanticCacheService semanticCacheService;
 
     public void ingest(String content, String filename){
         Document document = Document.from(content, Metadata.from("filename", filename));
@@ -46,58 +49,105 @@ public class RagService {
     }
 
     /**
-     *
-     * @param query 用户问题
-     * @param modelType 模型类型
-     * @param sessionId 会话ID
-     * @return 答案
+     * 同步对话接口（已集成语义缓存）
      */
     public String chat(String query, ModelType modelType, String sessionId){
         try{
             log.info("收到用户[{}]问题：{}, 使用模型：{}", sessionId, query, modelType.getName());
-            String context = retrieveContext(query);
 
+            // --- 1. 缓存层：查询 ---
+            if (!isContextDependent(query)) {
+                Optional<String> cachedAnswer = semanticCacheService.getCachedAnswer(query);
+                if(cachedAnswer.isPresent()){
+                    String answer = cachedAnswer.get();
+                    log.info("🎯 语义缓存命中！直接返回结果。");
+                    insertChatHistory(sessionId, query, answer, modelType);
+                    return answer;
+                }
+            }
+
+            // --- 2. 业务层：RAG 检索与生成 ---
+            String context = retrieveContext(query);
             KnowledgeAgent agent = agentFactory.getAgent(modelType);
+
             long startTime = System.currentTimeMillis();
             String answer = agent.answer(sessionId, query, context);
             long duration = System.currentTimeMillis() - startTime;
             log.info("模型回答完成，耗时：{} ms", duration);
 
+            // --- 3. 缓存层：回写 ---
+            // 异步或同步写入缓存都可以，这里为了简单直接调用
+            if (!isContextDependent(query)) {
+                semanticCacheService.setCachedAnswer(query, answer);
+            }
+
+            // --- 4. 持久化 ---
             insertChatHistory(sessionId, query, answer, modelType);
             return answer;
+
         }catch (Exception e){
             log.error("查询失败", e);
             return "查询失败：" + e.getMessage();
         }
     }
 
-    public SseEmitter streamChat(String query, String sessionId){
-        String context = retrieveContext(query);
-
+    /**
+     * 流式对话接口
+     */
+    public SseEmitter streamChat(String query, ModelType modelType, String sessionId){
         SseEmitter sseEmitter = new SseEmitter(5*60*1000L);
 
+        // --- 1. 缓存层：查询 ---
+
+        if (!isContextDependent(query)) {
+            Optional<String> cachedAnswer = semanticCacheService.getCachedAnswer(query);
+            if(cachedAnswer.isPresent()){
+                String answer = cachedAnswer.get();
+                log.info("🎯 语义缓存命中！直接返回结果。");
+                insertChatHistory(sessionId, query, answer, modelType);
+                return sseEmitter;
+            }
+        }
+
+        // --- 2. 缓存未命中：执行正常流式逻辑 ---
+        String context = retrieveContext(query);
         TokenStream tokenStream = streamKnowledgeAgent.chat(sessionId, query, context);
+
+        StringBuilder contentBuilder = new StringBuilder();
 
         tokenStream
                 .onNext(token -> {
                     try {
+                        contentBuilder.append(token);
                         sseEmitter.send(SseEmitter.event().data(token));
                     } catch (Exception e) {
                         sseEmitter.completeWithError(e);
                     }
-                }).onComplete(token -> {
+                })
+                .onComplete(token -> {
+                    String fullAnswer = contentBuilder.toString();
+
+                    // --- 3. 缓存层：回写 ---
+                    if (!fullAnswer.trim().isEmpty() && !isContextDependent(query)) {
+                        log.info("流式输出结束，写入语义缓存...");
+                        semanticCacheService.setCachedAnswer(query, fullAnswer);
+                    }
+
+                    //流式结束时，将完整对话保存到 MySQL
+                    log.info("流式输出结束，保存到数据库...");
+                    insertChatHistory(sessionId, query, fullAnswer, modelType);
+
                     sseEmitter.complete();
                 })
                 .onError(sseEmitter::completeWithError)
                 .start();
+
         return sseEmitter;
     }
 
 
     /**
      * 根据用户查询检索相关上下文
-     * @param query 用户查询
-     * @return 检索结果
      */
     private String retrieveContext(String query){
         Embedding queryEmbedding = embeddingModel.embed(query).content();
@@ -119,6 +169,29 @@ public class RagService {
             return "";
         }
         return String.join("\n---\n", contextList);
+    }
+
+    /**
+     * 判断问题是否依赖上下文（敏感词检测）
+     * 如果包含 "我"、"你"、"谁" 等代词，通常意味着答案是动态的，不适合缓存。
+     */
+    private boolean isContextDependent(String query) {
+        if (query == null) return true;
+        String q = query.toLowerCase();
+
+        // 简单粗暴但有效的关键词列表
+        String[] sensitiveKeywords = {
+                "我", "你", "您", "谁", "它", "他", "她",
+                "my", "i ", "you", "who", "this", "that"
+        };
+
+        for (String keyword : sensitiveKeywords) {
+            if (q.contains(keyword)) {
+                log.info("检测到上下文敏感词 '{}'，跳过语义缓存。", keyword);
+                return true;
+            }
+        }
+        return false;
     }
 
     private void insertChatHistory(String sessionId, String question, String answer, ModelType modelType){

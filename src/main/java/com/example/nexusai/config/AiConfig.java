@@ -1,6 +1,8 @@
 package com.example.nexusai.config;
 
 import dev.langchain4j.data.segment.TextSegment;
+import dev.langchain4j.memory.chat.ChatMemoryProvider;
+import dev.langchain4j.memory.chat.MessageWindowChatMemory;
 import dev.langchain4j.model.embedding.EmbeddingModel;
 import dev.langchain4j.model.embedding.onnx.bgesmallzhv15q.BgeSmallZhV15QuantizedEmbeddingModel;
 import dev.langchain4j.store.embedding.EmbeddingStore;
@@ -33,5 +35,10 @@ public class AiConfig {
                 .collectionName(collectionName)
                 .dimension(512)
                 .build();
+    }
+
+    @Bean
+    public ChatMemoryProvider chatMemoryProvider(){
+        return sessionId -> MessageWindowChatMemory.withMaxMessages(10);
     }
 }

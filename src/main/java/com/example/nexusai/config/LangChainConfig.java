@@ -43,11 +43,6 @@ public class LangChainConfig {
     @Value("${langchain4j.deepseek.reasoning-model.timeout}")
     private int reasoningTimeout;
 
-    @Bean
-    public ChatMemoryProvider chatMemoryProvider() {
-        return memoryId -> MessageWindowChatMemory.withMaxMessages(10);
-    }
-
     /**
      * 普通对话模型
      */
