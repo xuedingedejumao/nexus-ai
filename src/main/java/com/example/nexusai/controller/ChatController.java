@@ -5,11 +5,13 @@ import com.example.nexusai.dto.ChatResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 @Slf4j
 @RestController
@@ -50,5 +52,14 @@ public class ChatController {
             return ResponseEntity.status(500)
                     .body(ChatResponse.error("查询失败: " + e.getMessage()));
         }
+    }
+
+    @GetMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter streamChat(
+            @RequestParam String query,
+            @RequestParam(required = false) String sessionId
+    ){
+        String finalSessionId = (sessionId == null || sessionId.isEmpty()) ? "default user" : sessionId;
+        return ragService.streamChat(query, finalSessionId);
     }
 }

@@ -1,15 +1,18 @@
 package com.example.nexusai.config;
 
 import com.example.nexusai.service.KnowledgeAgent;
+import com.example.nexusai.service.StreamKnowledgeAgent;
 import dev.langchain4j.memory.chat.ChatMemoryProvider;
 import dev.langchain4j.memory.chat.MessageWindowChatMemory;
 import dev.langchain4j.model.chat.ChatLanguageModel;
 import dev.langchain4j.model.openai.OpenAiChatModel;
+import dev.langchain4j.model.openai.OpenAiStreamingChatModel;
 import dev.langchain4j.service.AiServices;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import dev.langchain4j.model.chat.StreamingChatLanguageModel;
 
 import java.time.Duration;
 
@@ -77,6 +80,18 @@ public class LangChainConfig {
                 .build();
     }
 
+    @Bean(name = "streamingChatModel")
+    public StreamingChatLanguageModel streamingChatLanguageModel() {
+        return OpenAiStreamingChatModel.builder()
+                .baseUrl(baseUrl)
+                .apiKey(apiKey)
+                .modelName(normalModelName)
+                .timeout(Duration.ofSeconds(normalTimeout))
+                .logRequests(true)
+                .logResponses(true)
+                .build();
+    }
+
     @Bean("normalAgent")
     public KnowledgeAgent normalAgent(@Qualifier("normalChatModel") ChatLanguageModel chatModel,
                                       ChatMemoryProvider chatMemoryProvider) {
@@ -86,12 +101,14 @@ public class LangChainConfig {
                 .build();
     }
 
-    @Bean("reasoningAgent")
-    public KnowledgeAgent reasoningAgent(@Qualifier("reasoningChatModel") ChatLanguageModel chatModel,
-                                         ChatMemoryProvider chatMemoryProvider) {
-        return AiServices.builder(KnowledgeAgent.class)
-                .chatLanguageModel(chatModel) // 装上计算器
-                .chatMemoryProvider(chatMemoryProvider) // ✅ 装上记忆
+    @Bean
+    public StreamKnowledgeAgent streamKnowledgeAgent(
+            @Qualifier("streamingChatModel") StreamingChatLanguageModel streamingChatModel, // 注入刚才定义的流式模型
+            ChatMemoryProvider chatMemoryProvider) {
+
+        return AiServices.builder(StreamKnowledgeAgent.class)
+                .streamingChatLanguageModel(streamingChatModel) // 使用流式模型
+                .chatMemoryProvider(chatMemoryProvider)
                 .build();
     }
 }

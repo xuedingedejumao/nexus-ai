@@ -50,9 +50,7 @@ public class DocumentListener {
 
             String content = tika.parseToString(inputStream);
 
-            String finalContent = "【来源文件："+ documentRecord.getFilename() + " 】\n" + content;
-
-            ragService.ingest(finalContent);
+            ragService.ingest(content, documentRecord.getFilename());
 
             updateStatus(docId, DocStatus.COMPLETED, null);
             log.info("###### 任务完成: 文档ID={}", docId);

@@ -3,15 +3,20 @@ package com.example.nexusai.service;
 import com.example.nexusai.entity.ChatHistory;
 import com.example.nexusai.enums.ModelType;
 import com.example.nexusai.mapper.ChatHistoryMapper;
+import dev.langchain4j.data.document.Document;
+import dev.langchain4j.data.document.Metadata;
+import dev.langchain4j.data.document.splitter.DocumentSplitters;
 import dev.langchain4j.data.embedding.Embedding;
 import dev.langchain4j.data.segment.TextSegment;
 import dev.langchain4j.model.embedding.EmbeddingModel;
+import dev.langchain4j.service.TokenStream;
 import dev.langchain4j.store.embedding.EmbeddingSearchRequest;
 import dev.langchain4j.store.embedding.EmbeddingSearchResult;
 import dev.langchain4j.store.embedding.EmbeddingStore;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.List;
 import java.util.stream.Collectors;
@@ -25,13 +30,18 @@ public class RagService {
     private final EmbeddingModel embeddingModel;
     private final KnowledgeAgentFactory agentFactory;
     private final ChatHistoryMapper chatHistoryMapper;
+    private final StreamKnowledgeAgent streamKnowledgeAgent;
 
-    public void ingest(String text){
-        log.info("开始处理文档入库，长度：{}", text.length());
-        String cleanedText = cleanText(text);
-        TextSegment segment = TextSegment.from(cleanedText);
-        Embedding embedding = embeddingModel.embed(segment).content();
-        embeddingStore.add(embedding, segment);
+    public void ingest(String content, String filename){
+        Document document = Document.from(content, Metadata.from("filename", filename));
+
+        List<TextSegment> segments = DocumentSplitters.recursive(500,100).split(document);
+        log.info("文档分割完成，段落数：{}", segments.size());
+
+        List<Embedding> embeddings = embeddingModel.embedAll(segments).content();
+
+        embeddingStore.addAll(embeddings, segments);
+
         log.info("文档入库完成");
     }
 
@@ -61,9 +71,28 @@ public class RagService {
         }
     }
 
-    private void saveHistory(){
+    public SseEmitter streamChat(String query, String sessionId){
+        String context = retrieveContext(query);
 
+        SseEmitter sseEmitter = new SseEmitter(5*60*1000L);
+
+        TokenStream tokenStream = streamKnowledgeAgent.chat(sessionId, query, context);
+
+        tokenStream
+                .onNext(token -> {
+                    try {
+                        sseEmitter.send(SseEmitter.event().data(token));
+                    } catch (Exception e) {
+                        sseEmitter.completeWithError(e);
+                    }
+                }).onComplete(token -> {
+                    sseEmitter.complete();
+                })
+                .onError(sseEmitter::completeWithError)
+                .start();
+        return sseEmitter;
     }
+
 
     /**
      * 根据用户查询检索相关上下文
@@ -75,37 +104,21 @@ public class RagService {
         EmbeddingSearchRequest request = EmbeddingSearchRequest.builder()
                 .queryEmbedding(queryEmbedding)
                 .maxResults(3)
-                .minScore(0.7)
+                .minScore(0.6)
                 .build();
         EmbeddingSearchResult<TextSegment> result = embeddingStore.search(request);
         List<String> contextList = result.matches().stream()
-                .map(match -> match.embedded().text())
+                .map(match -> {
+                    String text = match.embedded().text();
+                    String source = match.embedded().metadata().get("filename");
+                    return String.format("[来源：%s] %s", source, text);
+                })
                 .collect(Collectors.toList());
 
         if(contextList.isEmpty()){
-            log.info("知识库中未找到相关信息");
-            return "知识库中未找到相关信息";
+            return "";
         }
         return String.join("\n---\n", contextList);
-    }
-
-    private String cleanText(String text) {
-        if (text == null || text.isEmpty()) {
-            return text;
-        }
-
-        return text
-                // 移除 Markdown 粗体
-                .replaceAll("\\*\\*(.+?)\\*\\*", "$1")
-                // 移除斜体
-                .replaceAll("\\*(.+?)\\*", "$1")
-                // 移除代码标记
-                .replaceAll("`(.+?)`", "$1")
-                // 移除标题标记
-                .replaceAll("^#{1,6}\\s+", "")
-                // 清理多余空格
-                .replaceAll("\\s+", " ")
-                .trim();
     }
 
     private void insertChatHistory(String sessionId, String question, String answer, ModelType modelType){
