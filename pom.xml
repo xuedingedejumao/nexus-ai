@@ -95,6 +95,25 @@
             <artifactId>langchain4j-embeddings-bge-small-zh-v15-q</artifactId>
             <version>0.34.0</version>
         </dependency>
+        <!-- BGE Rerank Model (ONNX) -->
+        <!-- 注意：当前 LangChain4j 版本并未直接提供 BGE-Rerank 的 artifact，
+             我们暂时使用简单的 ScoringModel 接口，实际实现可能需要调用外部 API 或自定义。
+             但在 0.35 中，最简单的是复用 EmbeddingModel 计算 Cosine Similarity 作为简单的二次打分，
+             或者引入 langchain4j-cohere。
+             为了本地化，我们可以实现一个基于 Embedding 的 Pseudo-Reranker，或者如果用户有 Rerank 模型文件。
+             
+             更正：我们将使用 Cohere API 作为演示 (效果最好)，或者使用本地 Embedding 再次计算相似度作为 Rerank (无需新模型)。
+             鉴于用户要求 "完成 Rerank"，我们先用 Embedding 距离进行重排序演示 (Self-Rerank)。
+             如果要真正的 Cross-Encoder，需要 onnx runtime。
+             
+             让我们先添加 onnx runtime 支持以备将来使用本地模型。
+        -->
+        <dependency>
+            <groupId>com.microsoft.onnxruntime</groupId>
+            <artifactId>onnxruntime</artifactId>
+            <version>1.17.1</version>
+        </dependency>
+
 
         <dependency>
             <groupId>io.minio</groupId>

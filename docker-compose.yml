@@ -25,7 +25,7 @@ services:
       - MYSQL_ROOT_PASSWORD=root
       - MYSQL_DATABASE=nexus_ai
     volumes:
-      - ./volumes/mysql:/var/lib/mysql
+      - ../nexus-ai-data/volumes/mysql:/var/lib/mysql
 
   redis:
     image: redis/redis-stack:latest
@@ -33,7 +33,7 @@ services:
       - "6379:6379"
       - "8001:8001"
     volumes:
-      - ./redis-data:/data
+      - ../nexus-ai-data/redis-data:/data
 
   minio:
     image: minio/minio
@@ -45,7 +45,7 @@ services:
       - MINIO_ROOT_PASSWORD=minioadmin
     command: server /data --console-address ":9001"
     volumes:
-      - ./volumes/minio:/data
+      - ../nexus-ai-data/volumes/minio:/data
 
   milvus-standalone:
     image: milvusdb/milvus:v2.3.0
@@ -54,7 +54,7 @@ services:
       ETCD_ENDPOINTS: etcd:2379
       MINIO_ADDRESS: minio:9000
     volumes:
-      - ./volumes/milvus:/var/lib/milvus
+      - ../nexus-ai-data/volumes/milvus:/var/lib/milvus
     ports:
       - "19530:19530"
       - "9091:9091"
@@ -70,7 +70,7 @@ services:
       - ETCD_QUOTA_BACKEND_BYTES=4294967296
       - ETCD_SNAPSHOT_COUNT=50000
     volumes:
-      - ./volumes/etcd:/etcd
+      - ../nexus-ai-data/volumes/etcd:/etcd
     command: etcd -advertise-client-urls=http://127.0.0.1:2379 -listen-client-urls http://0.0.0.0:2379
 
   zookeeper:
