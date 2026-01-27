@@ -3,6 +3,7 @@ package com.example.nexusai.service;
 import com.example.nexusai.entity.ChatHistory;
 import com.example.nexusai.enums.ModelType;
 import com.example.nexusai.mapper.ChatHistoryMapper;
+import com.example.nexusai.utils.UserUtils;
 import dev.langchain4j.data.document.Document;
 import dev.langchain4j.data.document.Metadata;
 import dev.langchain4j.data.document.splitter.DocumentSplitters;
@@ -13,8 +14,10 @@ import dev.langchain4j.service.TokenStream;
 import dev.langchain4j.store.embedding.EmbeddingSearchRequest;
 import dev.langchain4j.store.embedding.EmbeddingSearchResult;
 import dev.langchain4j.store.embedding.EmbeddingStore;
+import io.github.resilience4j.ratelimiter.annotation.RateLimiter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
@@ -34,6 +37,7 @@ public class RagService {
     private final StreamKnowledgeAgent streamKnowledgeAgent;
 
     private final SemanticCacheService semanticCacheService;
+    private final UserUtils userUtils;
 
     public void ingest(String content, String filename){
         Document document = Document.from(content, Metadata.from("filename", filename));
@@ -51,6 +55,7 @@ public class RagService {
     /**
      * 同步对话接口（已集成语义缓存）
      */
+    @RateLimiter(name = "chatApi")
     public String chat(String query, ModelType modelType, String sessionId){
         try{
             log.info("收到用户[{}]问题：{}, 使用模型：{}", sessionId, query, modelType.getName());
@@ -195,8 +200,10 @@ public class RagService {
     }
 
     private void insertChatHistory(String sessionId, String question, String answer, ModelType modelType){
+        Long currentUserId = userUtils.getCurrentUserId();
         ChatHistory chatHistory = new ChatHistory()
                 .setSession_id(sessionId)
+                .setUserId(currentUserId)
                 .setUser_query(question)
                 .setAi_answer(answer)
                 .setModel_type(modelType.getName())

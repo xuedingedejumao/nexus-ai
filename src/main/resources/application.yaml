@@ -1,5 +1,5 @@
 server:
-  port: 8088
+  port: 8080
 
 spring:
   application:
@@ -25,7 +25,6 @@ langchain4j:
     chat-model:
       base-url: https://api.deepseek.com/v1
       api-key: sk-06ed1277282342188cf2b79fab5fc00b
-
   deepseek:
     normal-model:
       model-name: deepseek-chat
@@ -43,22 +42,47 @@ nexus:
     port: 19530
     collection-name: nexus_ai_collection
     dimension: 384
-
   minio:
     endpoint: http://localhost:9000
     access-key: minioadmin
-    secret-key: minioadmin
+    secret-key: ${MINIO_SECRET_KEY:minioadmin} # Use env var or default for local dev
     bucket-name: nexus-files
+  jwt:
+    secret: ${JWT_SECRET_KEY:NexusAI_Secure_Secret_Key_For_Jwt_Generation_2026_Keep_It_Safe}
+    expiration: 86400000
 
 kafka:
   bootstrap-servers: localhost:9092
   consumer:
-    group-id: nexus-group # 消费者组ID，同一组的消费者会抢任务
-    auto-offset-reset: earliest # 如果没有偏移量，从头开始读
+    group-id: nexus-group
+    auto-offset-reset: earliest
     key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
     value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
   producer:
     key-serialzer: org.apache.kafka.common.serialization.StringSerializer
     value-serializer: org.apache.kafka.common.serialization.StringSerializer
 
+# --- Observability & Resilience Config (Merged from application.yml) ---
 
+resilience4j:
+  ratelimiter:
+    instances:
+      chatApi:
+        limitForPeriod: 10
+        limitRefreshPeriod: 1s
+        timeoutDuration: 0
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+  tracing:
+    sampling:
+      probability: 1.0 # Sampling rate (1.0 = 100%, change to 0.1 for prod)
+  zipkin:
+    tracing:
+      endpoint: http://localhost:9411/api/v2/spans # Zipkin server address
+  metrics:
+    tags:
+      application: nexus-ai-backend

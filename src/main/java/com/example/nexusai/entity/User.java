@@ -10,14 +10,14 @@ import java.time.LocalDateTime;
 
 @Data
 @Accessors(chain = true)
-@TableName("chat_history")
-public class ChatHistory {
+@TableName("sys_user")
+public class User {
     @TableId(type = IdType.AUTO)
     private Long id;
-    private Long userId;
-    private String session_id;
-    private String user_query;
-    private String ai_answer;
-    private String model_type;
-    private LocalDateTime create_time;
+    private String username;
+    private String password;
+    private String email;
+    private String role;
+    private LocalDateTime createTime;
+    private LocalDateTime updateTime;
 }

@@ -4,6 +4,7 @@ import dev.langchain4j.data.embedding.Embedding;
 import dev.langchain4j.model.embedding.EmbeddingModel;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import redis.clients.jedis.JedisPooled;
 import redis.clients.jedis.search.*;
@@ -72,10 +73,9 @@ public class SemanticCacheService {
         }
     }
 
-    /**
-     * 尝试从缓存获取答案
-     */
+    @Cacheable(value = "localCache", key = "#userQuestion", unless = "#result == null || !#result.isPresent()")
     public Optional<String> getCachedAnswer(String userQuestion) {
+        log.info("L1 Cache (Caffeine) MISS. Checking L2 Cache (Redis)...");
         try {
             // 1. 向量化用户问题
             Embedding embedding = embeddingModel.embed(userQuestion).content();
