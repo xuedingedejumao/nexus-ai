@@ -17,7 +17,7 @@
 
     <properties>
         <java.version>17</java.version>
-        <langchain4j.version>0.35.0</langchain4j.version>
+        <langchain4j.version>0.36.0</langchain4j.version>
     </properties>
 
     <dependencyManagement>
@@ -85,9 +85,21 @@
             <artifactId>langchain4j-open-ai-spring-boot-starter</artifactId>
         </dependency>
 
+        <!-- LangChain4j Elasticsearch -->
         <dependency>
             <groupId>dev.langchain4j</groupId>
-            <artifactId>langchain4j-milvus</artifactId>
+            <artifactId>langchain4j-elasticsearch</artifactId>
+        </dependency>
+
+        <!-- Use latest stable elasticsearch-java compatible with LC4j 0.36.0 -->
+        <dependency>
+            <groupId>co.elastic.clients</groupId>
+            <artifactId>elasticsearch-java</artifactId>
+            <version>8.15.0</version>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
         </dependency>
 
         <dependency>
@@ -95,6 +107,7 @@
             <artifactId>langchain4j-embeddings-bge-small-zh-v15-q</artifactId>
             <version>0.34.0</version>
         </dependency>
+
         <!-- BGE Rerank Model (ONNX) -->
         <!-- 注意：当前 LangChain4j 版本并未直接提供 BGE-Rerank 的 artifact，
              我们暂时使用简单的 ScoringModel 接口，实际实现可能需要调用外部 API 或自定义。

@@ -75,8 +75,8 @@ public class LangChainConfig {
                 .build();
     }
 
-    @Bean(name = "streamingChatModel")
-    public StreamingChatLanguageModel streamingChatLanguageModel() {
+    @Bean(name = "normalStreamingChatModel")
+    public StreamingChatLanguageModel normalStreamingChatModel() {
         return OpenAiStreamingChatModel.builder()
                 .baseUrl(baseUrl)
                 .apiKey(apiKey)
@@ -87,23 +87,15 @@ public class LangChainConfig {
                 .build();
     }
 
-    @Bean("normalAgent")
-    public KnowledgeAgent normalAgent(@Qualifier("normalChatModel") ChatLanguageModel chatModel,
-                                      ChatMemoryProvider chatMemoryProvider) {
-        return AiServices.builder(KnowledgeAgent.class)
-                .chatLanguageModel(chatModel) // 装上计算器
-                .chatMemoryProvider(chatMemoryProvider) // ✅ 装上记忆
-                .build();
-    }
-
-    @Bean
-    public StreamKnowledgeAgent streamKnowledgeAgent(
-            @Qualifier("streamingChatModel") StreamingChatLanguageModel streamingChatModel, // 注入刚才定义的流式模型
-            ChatMemoryProvider chatMemoryProvider) {
-
-        return AiServices.builder(StreamKnowledgeAgent.class)
-                .streamingChatLanguageModel(streamingChatModel) // 使用流式模型
-                .chatMemoryProvider(chatMemoryProvider)
+    @Bean(name = "reasoningStreamingChatModel")
+    public StreamingChatLanguageModel reasoningStreamingChatModel() {
+        return OpenAiStreamingChatModel.builder()
+                .baseUrl(baseUrl)
+                .apiKey(apiKey)
+                .modelName(reasoningModelName)
+                .timeout(Duration.ofSeconds(reasoningTimeout))
+                .logRequests(true)
+                .logResponses(true)
                 .build();
     }
 }

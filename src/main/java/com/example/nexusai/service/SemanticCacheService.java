@@ -73,7 +73,7 @@ public class SemanticCacheService {
         }
     }
 
-    @Cacheable(value = "localCache", key = "#userQuestion", unless = "#result == null || !#result.isPresent()")
+    @Cacheable(value = "localCache", key = "#userQuestion", unless = "#result == null")
     public Optional<String> getCachedAnswer(String userQuestion) {
         log.info("L1 Cache (Caffeine) MISS. Checking L2 Cache (Redis)...");
         try {
@@ -100,7 +100,16 @@ public class SemanticCacheService {
 
             if (result.getTotalResults() > 0) {
                 Document doc = result.getDocuments().get(0);
-                double score = Double.parseDouble(doc.getString("score"));
+                
+                Object scoreObj = doc.get("score");
+                double score = 1.0;
+                if (scoreObj != null) {
+                    try {
+                        score = Double.parseDouble(scoreObj.toString());
+                    } catch (NumberFormatException e) {
+                        log.warn("Invalid score format: {}", scoreObj);
+                    }
+                }
 
                 // Redis Cosine Distance: 0 (相同) -> 1 (完全不同)
                 // 也就是 距离越小越相似。

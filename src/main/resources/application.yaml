@@ -6,7 +6,7 @@ spring:
     name: nexus-ai-backend
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
-    url: jdbc:mysql://localhost:3307/nexus_ai?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai
+    url: jdbc:mysql://localhost:3307/nexus_ai?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
     username: root
     password: root
   servlet:
@@ -24,6 +24,7 @@ langchain4j:
   open-ai:
     chat-model:
       base-url: https://api.deepseek.com/v1
+      # WARNING: API KEY should be moved to environment variable for security
       api-key: sk-06ed1277282342188cf2b79fab5fc00b
   deepseek:
     normal-model:
@@ -37,11 +38,10 @@ langchain4j:
 
 
 nexus:
-  milvus:
+  elasticsearch:
     host: localhost
-    port: 19530
-    collection-name: nexus_ai_collection
-    dimension: 384
+    port: 9200
+    index-name: nexus_ai_index
   minio:
     endpoint: http://localhost:9000
     access-key: minioadmin

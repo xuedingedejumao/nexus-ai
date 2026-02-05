@@ -1,6 +1,7 @@
 package com.example.nexusai.config;
 
 import com.example.nexusai.filter.JwtAuthenticationFilter;
+import jakarta.servlet.DispatcherType;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -22,14 +23,12 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
-                .csrf(AbstractHttpConfigurer::disable) // 禁用 CSRF
+                .csrf(AbstractHttpConfigurer::disable)
                 .authorizeHttpRequests(auth -> auth
-                        // 1. 放行登录和注册接口 (白名单)
+                        .dispatcherTypeMatchers(DispatcherType.ASYNC).permitAll()
                         .requestMatchers("/auth/**").permitAll()
-                        // 2. 其他所有接口必须认证 (黑名单)
                         .anyRequest().authenticated()
                 )
-                // 3. 把我们的 JWT 过滤器加到 UsernamePasswordAuthenticationFilter 之前
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();

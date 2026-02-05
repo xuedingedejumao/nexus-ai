@@ -6,6 +6,27 @@ import time
 
 API_BASE_URL = "http://localhost:8080"
 
+# --- Compatibility Helpers ---
+def safe_rerun():
+    """Compatible rerun for older Streamlit versions"""
+    if hasattr(st, "rerun"):
+        st.rerun()
+    elif hasattr(st, "experimental_rerun"):
+        st.experimental_rerun()
+    else:
+        st.write("请手动刷新页面...")
+
+def safe_chat_input(placeholder):
+    """Compatible chat input for older Streamlit versions"""
+    if hasattr(st, "chat_input"):
+        return st.chat_input(placeholder)
+    else:
+        # Fallback for old versions: use text_input inside a form to mimic enter-to-submit
+        with st.form(key="chat_form", clear_on_submit=True):
+            user_in = st.text_input("Input", placeholder=placeholder, label_visibility="collapsed")
+            submitted = st.form_submit_button("发送")
+        return user_in if submitted else None
+
 st.set_page_config(page_title="NexusAI", page_icon="icon.png", layout="centered", initial_sidebar_state="collapsed")
 
 def login_api(username, password):
@@ -53,7 +74,7 @@ if not st.session_state.authenticated:
                     st.session_state.username = username
                     st.session_state.token = result
                     st.success("Login successful!")
-                    st.rerun()
+                    safe_rerun()
                 else:
                     st.error(result)
     
@@ -82,14 +103,14 @@ if "current_model" not in st.session_state:
 if "uploaded_files" not in st.session_state:
     st.session_state.uploaded_files = [] 
 
-# Sidebar with User Info
-with st.sidebar:
-    st.write(f"👤 User: **{st.session_state.username}**")
-    if st.button("Logout"):
-        st.session_state.authenticated = False
-        st.session_state.username = None
-        st.session_state.messages = []
-        st.rerun()
+    # Sidebar with User Info
+    with st.sidebar:
+        st.write(f"👤 User: **{st.session_state.username}**")
+        if st.button("Logout"):
+            st.session_state.authenticated = False
+            st.session_state.username = None
+            st.session_state.messages = []
+            safe_rerun()
 
 # ===== 顶部：标题 + 模型选择 =====
 col1, col2 = st.columns([1.2, 1])
@@ -103,33 +124,45 @@ with col2:
 
 # ===== 文件上传区：选择文件 + 上传按钮 =====
 with st.container():
-    up = st.file_uploader("Attach", type=["pdf", "docx", "txt"], label_visibility="collapsed")
+    with st.form("upload_form", clear_on_submit=False): 
+        up = st.file_uploader("Attach", type=["pdf", "docx", "txt"], label_visibility="collapsed")
+        upload_clicked = st.form_submit_button("上传文件", use_container_width=True)
+        
+        if upload_clicked:
+            if not up:
+                st.warning("⚠️ 请先选择一个文件")
+            else:
+                with st.spinner("正在上传并处理..."):
+                    try:
+                        headers = {}
+                        if st.session_state.token:
+                            headers["Authorization"] = f"Bearer {st.session_state.token}"
+                        
+                        up.seek(0)
+                        files = {"file": (up.name, up.getvalue(), up.type or "application/octet-stream")}
+                        
+                        r = requests.post(
+                            f"{API_BASE_URL}/api/docs/upload", 
+                            files=files, 
+                            headers=headers, 
+                            timeout=120
+                        )
+                        
+                        if r.status_code == 200:
+                            st.session_state.uploaded_files.append(up.name)
+                            st.success(f"✅ 上传成功：{up.name}")
+                        elif r.status_code == 403:
+                            st.error("❌ 上传失败：403 Forbidden (权限不足，请重新登录)")
+                        else:
+                            st.error(f"❌ 上传失败：{r.status_code} - {r.text}")
+                            
+                    except requests.exceptions.ConnectionError:
+                        st.error("❌ 无法连接到后端服务器，请确认服务已启动 (localhost:8080)")
+                    except Exception as e:
+                        st.error(f"❌ 发生异常：{e}")
 
-    c1, c2 = st.columns([1, 4])
-    with c1:
-        upload_clicked = st.button("上传文件", use_container_width=True)
-    with c2:
-        if st.session_state.uploaded_files:
-            st.caption("已上传：" + "、".join(st.session_state.uploaded_files[-5:]))
-
-    if upload_clicked:
-        if not up:
-            st.warning("先选择一个文件再点上传")
-        else:
-            try:
-                headers = {}
-                if st.session_state.token:
-                    headers["Authorization"] = f"Bearer {st.session_state.token}"
-                
-                files = {"file": (up.name, up.getvalue(), up.type or "application/octet-stream")}
-                r = requests.post(f"{API_BASE_URL}/docs/upload", files=files, headers=headers, timeout=120)
-                if r.status_code == 200:
-                    st.success(f"✅ 上传成功：{up.name}")
-                    st.session_state.uploaded_files.append(up.name)
-                else:
-                    st.error(f"❌ 上传失败：{r.status_code} {r.text}")
-            except Exception as e:
-                st.error(f"❌ 上传异常：{e}")
+    if st.session_state.uploaded_files:
+        st.caption("已上传：" + "、".join(st.session_state.uploaded_files[-5:]))
 
 st.divider()
 
@@ -142,7 +175,7 @@ for msg in st.session_state.messages:
 components.html("<script>window.scrollTo(0, document.body.scrollHeight);</script>", height=0)
 
 # ===== 输入 + 真实流式 SSE =====
-user_input = st.chat_input("输入问题，Enter 发送…")
+user_input = safe_chat_input("输入问题，Enter 发送…")
 
 if user_input and user_input.strip():
     st.session_state.messages.append({"role": "user", "content": user_input})
@@ -158,19 +191,19 @@ if user_input and user_input.strip():
             params = {
                 "query": user_input,
                 "sessionId": st.session_state.session_id,
-                "modelType": st.session_state.current_model,  
+                "modelType": st.session_state.current_model,
             }
             headers = {"Accept": "text/event-stream"}
             if st.session_state.token:
                 headers["Authorization"] = f"Bearer {st.session_state.token}"
 
-            with requests.get(f"{API_BASE_URL}/ai/stream", params=params, headers=headers, stream=True, timeout=(5, 120)) as resp:
+            with requests.get(f"{API_BASE_URL}/api/ai/stream", params=params, headers=headers, stream=True, timeout=(5, 120)) as resp:
                 resp.raise_for_status()
 
                 for raw_line in resp.iter_lines(decode_unicode=False, chunk_size=1):
                     if not raw_line:
                         continue
-                    line = raw_line.decode("utf-8", errors="ignore")  
+                    line = raw_line.decode("utf-8", errors="ignore")
                     if not line:
                         continue
                     if line.startswith("data:"):
