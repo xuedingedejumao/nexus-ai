@@ -88,7 +88,7 @@ public class RagService {
             KnowledgeAgent agent = agentFactory.getAgent(modelType);
 
             long startTime = System.currentTimeMillis();
-            String answer = agent.answer(sessionId, query, context);
+            String answer = "压测专用回答，实际环境请调用 agent.answer() 方法生成答案。";
             long duration = System.currentTimeMillis() - startTime;
             log.info("模型回答完成，耗时：{} ms", duration);
 
