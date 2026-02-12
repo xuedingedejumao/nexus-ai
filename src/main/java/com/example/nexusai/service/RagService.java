@@ -22,7 +22,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import co.elastic.clients.elasticsearch.ElasticsearchClient;
-import co.elastic.clients.elasticsearch.core.search.KnnSearch;
+import co.elastic.clients.elasticsearch._types.KnnSearch;
 import co.elastic.clients.elasticsearch._types.query_dsl.MatchQuery;
 import co.elastic.clients.elasticsearch._types.query_dsl.Query;
 import co.elastic.clients.elasticsearch.core.SearchResponse;
@@ -203,8 +203,8 @@ public class RagService {
                     .knn(knnSearch)
                     .rank(r -> r
                             .rrf(rrf -> rrf
-                                    .windowSize(20)
-                                    .rankConstant(60)))
+                                    .rankWindowSize(20L)
+                                    .rankConstant(60L)))
                     .size(20),
                     Map.class);
 
@@ -221,7 +221,7 @@ public class RagService {
                     Metadata metadata = new Metadata();
                     if (source.containsKey("metadata")) {
                         Map<String, Object> metaMap = (Map<String, Object>) source.get("metadata");
-                        metaMap.forEach((k, v) -> metadata.add(k, v.toString()));
+                        metaMap.forEach((k, v) -> metadata.put(k, v.toString()));
                     }
                     candidates.add(TextSegment.from(text, metadata));
                 }
@@ -246,7 +246,7 @@ public class RagService {
             List<String> contextList = ranked.stream()
                     .map(item -> {
                         String text = item.segment.text();
-                        String filename = item.segment.metadata().get("filename");
+                        String filename = item.segment.metadata().getString("filename");
                         return String.format("[来源：%s (Score: %.2f)] %s", filename, item.score, text);
                     })
                     .collect(Collectors.toList());
