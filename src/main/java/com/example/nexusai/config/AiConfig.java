@@ -10,6 +10,12 @@ import dev.langchain4j.model.scoring.ScoringModel;
 import dev.langchain4j.store.embedding.EmbeddingStore;
 import dev.langchain4j.store.embedding.elasticsearch.ElasticsearchEmbeddingStore;
 import dev.langchain4j.store.embedding.elasticsearch.ElasticsearchConfigurationKnn;
+import org.apache.http.HttpHost;
+import org.elasticsearch.client.RestClient;
+import co.elastic.clients.elasticsearch.ElasticsearchClient;
+import co.elastic.clients.json.jackson.JacksonJsonpMapper;
+import co.elastic.clients.transport.ElasticsearchTransport;
+import co.elastic.clients.transport.rest_client.RestClientTransport;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -29,11 +35,13 @@ public class AiConfig {
     @Value("${nexus.elasticsearch.index-name}")
     private String indexName;
 
+    /** 本地 BGE 中文向量模型 (ONNX, 512维) */
     @Bean
-    public EmbeddingModel embeddingModel(){
+    public EmbeddingModel embeddingModel() {
         return new BgeSmallZhV15QuantizedEmbeddingModel();
     }
 
+    /** 基于 Embedding 余弦相似度的二次打分模型 (Pseudo-Reranker) */
     @Bean
     public ScoringModel scoringModel(EmbeddingModel embeddingModel) {
         return new ScoringModel() {
@@ -41,8 +49,7 @@ public class AiConfig {
             public Response<Double> score(String text, String query) {
                 double score = dev.langchain4j.store.embedding.CosineSimilarity.between(
                         embeddingModel.embed(text).content(),
-                        embeddingModel.embed(query).content()
-                );
+                        embeddingModel.embed(query).content());
                 return Response.from(score);
             }
 
@@ -61,6 +68,7 @@ public class AiConfig {
         };
     }
 
+    /** Elasticsearch 向量存储 (用于文档入库) */
     @Bean
     public EmbeddingStore<TextSegment> embeddingStore() {
         return ElasticsearchEmbeddingStore.builder()
@@ -73,8 +81,19 @@ public class AiConfig {
                 .build();
     }
 
+    /** Elasticsearch 原生客户端 (用于 BM25 混合检索) */
     @Bean
-    public ChatMemoryProvider chatMemoryProvider(){
+    public ElasticsearchClient elasticsearchClient() {
+        RestClient restClient = RestClient.builder(
+                new HttpHost(esHost, esPort, "http")).build();
+        ElasticsearchTransport transport = new RestClientTransport(
+                restClient, new JacksonJsonpMapper());
+        return new ElasticsearchClient(transport);
+    }
+
+    /** 对话记忆提供器，每个会话保留最近 10 条消息 */
+    @Bean
+    public ChatMemoryProvider chatMemoryProvider() {
         return sessionId -> MessageWindowChatMemory.withMaxMessages(10);
     }
 }

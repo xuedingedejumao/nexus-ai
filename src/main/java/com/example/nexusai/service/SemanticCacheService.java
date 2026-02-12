@@ -12,8 +12,7 @@ import redis.clients.jedis.search.schemafields.SchemaField;
 import redis.clients.jedis.search.schemafields.TextField;
 import redis.clients.jedis.search.schemafields.VectorField;
 
-import jakarta.annotation.PostConstruct; // Spring Boot 3 使用 jakarta
-import java.io.IOException;
+import jakarta.annotation.PostConstruct;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.*;
@@ -23,10 +22,10 @@ import java.util.*;
 public class SemanticCacheService {
 
     @Autowired
-    private EmbeddingModel embeddingModel; // 自动注入 POM 中的 BGE 模型
+    private EmbeddingModel embeddingModel;
 
     @Autowired
-    private JedisPooled jedis; // 确保你有配置 JedisPooled 的 Bean
+    private JedisPooled jedis;
 
     private static final int VECTOR_DIM = 512;
     private static final String PREFIX = "cache:";
@@ -36,11 +35,10 @@ public class SemanticCacheService {
     @PostConstruct
     public void initIndex() {
         try {
-            // 检查索引是否存在
             jedis.ftInfo(INDEX_NAME);
-            log.info("Redis Index '{}' already exists.", INDEX_NAME);
+            log.info("Redis 索引 '{}' 已存在", INDEX_NAME);
         } catch (Exception e) {
-            log.info("Creating Redis Index '{}'...", INDEX_NAME);
+            log.info("正在创建 Redis 索引 '{}'...", INDEX_NAME);
             createIndex();
         }
     }
@@ -67,73 +65,63 @@ public class SemanticCacheService {
                     .addPrefix(PREFIX);
 
             jedis.ftCreate(INDEX_NAME, createParams, schemaFields);
-            log.info("Index Created Successfully!");
+            log.info("Redis 索引创建成功");
         } catch (Exception e) {
-            log.error("Failed to create index: {}", e.getMessage());
+            log.error("Redis 索引创建失败: {}", e.getMessage());
         }
     }
 
+    /** 查询语义缓存 (L1 Caffeine → L2 Redis 向量检索) */
     @Cacheable(value = "localCache", key = "#userQuestion", unless = "#result == null")
     public Optional<String> getCachedAnswer(String userQuestion) {
-        log.info("L1 Cache (Caffeine) MISS. Checking L2 Cache (Redis)...");
+        log.info("L1 本地缓存未命中，查询 L2 Redis 语义缓存...");
         try {
-            // 1. 向量化用户问题
             Embedding embedding = embeddingModel.embed(userQuestion).content();
             float[] floatVector = embedding.vector();
 
-            // ⚠️ 校验维度：防止维度不匹配报错
             if (floatVector.length != VECTOR_DIM) {
-                log.warn("Embedding dim mismatch! Expected: {}, Actual: {}", VECTOR_DIM, floatVector.length);
-                // 可以在这里根据实际情况调整 VECTOR_DIM，或者抛出异常
+                log.warn("向量维度不匹配！预期: {}, 实际: {}", VECTOR_DIM, floatVector.length);
                 return Optional.empty();
             }
 
-            // 2. 构建查询
-            // KNN 1 表示只取最相似的那 1 个
             Query query = new Query("*=>[KNN 1 @vector $vec AS score]")
                     .addParam("vec", floatsToBytes(floatVector))
                     .returnFields("answer", "question", "score")
                     .dialect(2);
 
-            // 3. 执行搜索
             SearchResult result = jedis.ftSearch(INDEX_NAME, query);
 
             if (result.getTotalResults() > 0) {
                 Document doc = result.getDocuments().get(0);
-                
+
                 Object scoreObj = doc.get("score");
                 double score = 1.0;
                 if (scoreObj != null) {
                     try {
                         score = Double.parseDouble(scoreObj.toString());
                     } catch (NumberFormatException e) {
-                        log.warn("Invalid score format: {}", scoreObj);
+                        log.warn("分数格式无效: {}", scoreObj);
                     }
                 }
 
-                // Redis Cosine Distance: 0 (相同) -> 1 (完全不同)
-                // 也就是 距离越小越相似。
-                // 转换成相似度 = 1 - 距离
+                // Redis 余弦距离: 0(完全相同) → 1(完全不同)，转换为相似度
                 double similarity = 1 - score;
-
-                log.info("Cache Hit Candidate: score(dist)={}, similarity={}", score, similarity);
+                log.info("缓存候选结果: 距离={}, 相似度={}", score, similarity);
 
                 if (similarity >= SIMILARITY_THRESHOLD) {
-                    log.info("Semantic Cache HIT! Question: {}", userQuestion);
+                    log.info("语义缓存命中！问题: {}", userQuestion);
                     return Optional.ofNullable(doc.getString("answer"));
                 }
             }
         } catch (Exception e) {
-            log.error("Error retrieving from cache: {}", e.getMessage());
+            log.error("缓存查询异常: {}", e.getMessage());
         }
 
-        log.info("Semantic Cache MISS.");
+        log.info("语义缓存未命中");
         return Optional.empty();
     }
 
-    /**
-     * 将新的问答对存入缓存
-     */
+    /** 将问答对存入语义缓存 */
     public void setCachedAnswer(String userQuestion, String aiAnswer) {
         try {
             Embedding embedding = embeddingModel.embed(userQuestion).content();
@@ -144,19 +132,15 @@ public class SemanticCacheService {
             fields.put("answer", aiAnswer);
             fields.put("vector", floatsToBytes(floatVector));
 
-            // Key 格式: cache:UUID
             String key = PREFIX + UUID.randomUUID().toString();
-            jedis.hset(key, (Map) fields); // 注意强转或使用 Jedis 具体 API
-
-            log.info("Cached new Q&A pair. Key: {}", key);
+            jedis.hset(key, (Map) fields);
+            log.info("已缓存问答对, Key: {}", key);
         } catch (Exception e) {
-            log.error("Failed to set cache: {}", e.getMessage());
+            log.error("缓存写入失败: {}", e.getMessage());
         }
     }
 
-    /**
-     * 工具方法：float[] 转 byte[] (Little Endian)
-     */
+    /** float[] 转 byte[] (Little Endian) */
     private byte[] floatsToBytes(float[] vector) {
         ByteBuffer buffer = ByteBuffer.allocate(vector.length * Float.BYTES);
         buffer.order(ByteOrder.LITTLE_ENDIAN);

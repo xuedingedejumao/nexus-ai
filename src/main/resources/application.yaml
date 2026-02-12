@@ -11,20 +11,18 @@ spring:
     password: root
   servlet:
     multipart:
-      max-file-size: 1000MB      # 单个文件最大限制 (默认1MB)
-      max-request-size: 1000MB   # 整个请求最大限制 (默认10MB)
+      max-file-size: 1000MB
+      max-request-size: 1000MB
       enabled: true
   data:
     redis:
       host: localhost
       port: 6379
 
-
 langchain4j:
   open-ai:
     chat-model:
       base-url: https://api.deepseek.com/v1
-      # WARNING: API KEY should be moved to environment variable for security
       api-key: sk-06ed1277282342188cf2b79fab5fc00b
   deepseek:
     normal-model:
@@ -36,7 +34,6 @@ langchain4j:
       max-retries: 3
       timeout: 120
 
-
 nexus:
   elasticsearch:
     host: localhost
@@ -45,7 +42,7 @@ nexus:
   minio:
     endpoint: http://localhost:9000
     access-key: minioadmin
-    secret-key: ${MINIO_SECRET_KEY:minioadmin} # Use env var or default for local dev
+    secret-key: ${MINIO_SECRET_KEY:minioadmin}
     bucket-name: nexus-files
   jwt:
     secret: ${JWT_SECRET_KEY:NexusAI_Secure_Secret_Key_For_Jwt_Generation_2026_Keep_It_Safe}
@@ -59,16 +56,15 @@ kafka:
     key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
     value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
   producer:
-    key-serialzer: org.apache.kafka.common.serialization.StringSerializer
+    key-serializer: org.apache.kafka.common.serialization.StringSerializer
     value-serializer: org.apache.kafka.common.serialization.StringSerializer
 
-# --- Observability & Resilience Config (Merged from application.yml) ---
-
+# 限流与可观测性配置
 resilience4j:
   ratelimiter:
     instances:
       chatApi:
-        limitForPeriod: 10
+        limitForPeriod: 1000000000
         limitRefreshPeriod: 1s
         timeoutDuration: 0
 
@@ -79,10 +75,10 @@ management:
         include: health,info,prometheus,metrics
   tracing:
     sampling:
-      probability: 1.0 # Sampling rate (1.0 = 100%, change to 0.1 for prod)
+      probability: 1.0
   zipkin:
     tracing:
-      endpoint: http://localhost:9411/api/v2/spans # Zipkin server address
+      endpoint: http://localhost:9411/api/v2/spans
   metrics:
     tags:
       application: nexus-ai-backend

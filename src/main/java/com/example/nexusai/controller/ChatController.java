@@ -22,40 +22,26 @@ public class ChatController {
 
     private final RagService ragService;
 
-    // ================== 普通对话接口 ==================
+    /** 普通对话接口 */
     @GetMapping("/chat")
     public ResponseEntity<ChatResponse> chat(
             @RequestParam String query,
             @RequestParam(defaultValue = "NORMAL") String modelType,
             @RequestParam(required = false) String sessionId,
-            Authentication authentication // 👈 1. 注入认证信息
-    ) {
+            Authentication authentication) {
         try {
-            // 2. 获取当前用户名
             String username = (authentication != null) ? authentication.getName() : "anonymous";
-
-            // 3. 修复空指针：如果没传 sessionId，给个默认值 "default"
             String safeSessionId = (sessionId == null || sessionId.trim().isEmpty()) ? "default" : sessionId;
-
-            // 4. 构建唯一会话ID (用户隔离关键点: "jackie:default")
             String distinctId = username + ":" + safeSessionId;
-
-            // 将字符串转换为枚举
             ModelType type = ModelType.valueOf(modelType.toUpperCase());
 
             log.info("用户 [{}] 发起对话, 模型: {}, Session: {}", username, type, safeSessionId);
 
             long startTime = System.currentTimeMillis();
-            // 5. 传给 Service 的是 distinctId
             String answer = ragService.chat(query, type, distinctId);
             long duration = System.currentTimeMillis() - startTime;
 
-            return ResponseEntity.ok(ChatResponse.success(
-                    answer,
-                    type.name(),
-                    type.name(), // 这里假设你的 ChatResponse 需要两个 modelName
-                    duration
-            ));
+            return ResponseEntity.ok(ChatResponse.success(answer, type.name(), type.name(), duration));
 
         } catch (IllegalArgumentException e) {
             log.error("无效的模型类型: {}", modelType);
@@ -68,28 +54,20 @@ public class ChatController {
         }
     }
 
-    // ================== 流式对话接口 ==================
+    /** 流式对话接口 (SSE) */
     @GetMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter streamChat(
             @RequestParam String query,
             @RequestParam(required = false) String sessionId,
             @RequestParam(defaultValue = "NORMAL") String modelType,
-            Authentication authentication // 👈 1. 注入认证信息
-    ){
-        // 获取用户名
+            Authentication authentication) {
+
         String username = (authentication != null) ? authentication.getName() : "anonymous";
-
-        // 判空逻辑
         String safeSessionId = (sessionId == null || sessionId.trim().isEmpty()) ? "default" : sessionId;
-
-        // 构建隔离ID
         String distinctId = username + ":" + safeSessionId;
-
         ModelType type = ModelType.valueOf(modelType.toUpperCase());
 
         log.info("用户 [{}] 发起流式对话, Session: {}", username, safeSessionId);
-
-        // 传给 Service 的是 distinctId
         return ragService.streamChat(query, type, distinctId);
     }
 }
