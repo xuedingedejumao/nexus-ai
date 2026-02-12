@@ -22,12 +22,25 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
-
+import co.elastic.clients.elasticsearch.ElasticsearchClient;
+import co.elastic.clients.elasticsearch.core.search.KnnSearch;
+import co.elastic.clients.elasticsearch._types.query_dsl.MatchQuery;
+import co.elastic.clients.elasticsearch._types.query_dsl.Query;
+import co.elastic.clients.elasticsearch.core.SearchRequest;
+import co.elastic.clients.elasticsearch.core.SearchResponse;
+import co.elastic.clients.elasticsearch.core.search.Hit;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Primary;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 @Slf4j
 @Service
@@ -36,16 +49,20 @@ public class RagService {
     private final EmbeddingStore<TextSegment> embeddingStore;
     private final EmbeddingModel embeddingModel;
     private final ScoringModel scoringModel;
+    private final ElasticsearchClient elasticsearchClient;
     private final KnowledgeAgentFactory agentFactory;
     private final ChatHistoryMapper chatHistoryMapper;
-    
+
     private final SemanticCacheService semanticCacheService;
     private final UserUtils userUtils;
 
-    public void ingest(String content, String filename){
+    @Value("${nexus.elasticsearch.index-name}")
+    private String indexName;
+
+    public void ingest(String content, String filename) {
         Document document = Document.from(content, Metadata.from("filename", filename));
 
-        List<TextSegment> segments = DocumentSplitters.recursive(500,100).split(document);
+        List<TextSegment> segments = DocumentSplitters.recursive(500, 100).split(document);
         log.info("文档分割完成，段落数：{}", segments.size());
 
         List<Embedding> embeddings = embeddingModel.embedAll(segments).content();
@@ -56,14 +73,14 @@ public class RagService {
     }
 
     @RateLimiter(name = "chatApi")
-    public String chat(String query, ModelType modelType, String sessionId){
-        try{
+    public String chat(String query, ModelType modelType, String sessionId) {
+        try {
             log.info("收到用户[{}]问题：{}, 使用模型：{}", sessionId, query, modelType.getName());
 
             // --- 1. 缓存层：查询 ---
             if (!isContextDependent(query)) {
                 Optional<String> cachedAnswer = semanticCacheService.getCachedAnswer(query);
-                if(cachedAnswer.isPresent()){
+                if (cachedAnswer.isPresent()) {
                     String answer = cachedAnswer.get();
                     log.info("🎯 语义缓存命中！直接返回结果。");
                     insertChatHistory(sessionId, query, answer, modelType);
@@ -89,7 +106,7 @@ public class RagService {
             insertChatHistory(sessionId, query, answer, modelType);
             return answer;
 
-        }catch (Exception e){
+        } catch (Exception e) {
             log.error("查询失败", e);
             return "查询失败：" + e.getMessage();
         }
@@ -98,17 +115,17 @@ public class RagService {
     /**
      * 流式对话接口
      */
-    public SseEmitter streamChat(String query, ModelType modelType, String sessionId){
-        SseEmitter sseEmitter = new SseEmitter(5*60*1000L);
+    public SseEmitter streamChat(String query, ModelType modelType, String sessionId) {
+        SseEmitter sseEmitter = new SseEmitter(5 * 60 * 1000L);
 
         // --- 1. 缓存层：查询 ---
         if (!isContextDependent(query)) {
             Optional<String> cachedAnswer = semanticCacheService.getCachedAnswer(query);
-            if(cachedAnswer.isPresent()){
+            if (cachedAnswer.isPresent()) {
                 String answer = cachedAnswer.get();
                 log.info("🎯 语义缓存命中！直接返回结果。");
                 insertChatHistory(sessionId, query, answer, modelType);
-                
+
                 // 模拟流式输出缓存内容
                 Executors.newSingleThreadExecutor().submit(() -> {
                     try {
@@ -144,7 +161,7 @@ public class RagService {
                 .onComplete(token -> {
                     SecurityContextHolder.setContext(securityContext);
                     RequestContextHolder.setRequestAttributes(requestAttributes);
-                    
+
                     try {
                         String fullAnswer = contentBuilder.toString();
 
@@ -169,55 +186,92 @@ public class RagService {
     }
 
     /**
-     * 根据用户查询检索相关上下文 (Rerank Enhanced)
+     * 根据用户查询检索相关上下文 (Hybrid Search: BM25 + Vector + Rerank)
      */
-    private String retrieveContext(String query){
-        Embedding queryEmbedding = embeddingModel.embed(query).content();
-        
-        // 1. 粗排 (Retrieve Top-20)
-        EmbeddingSearchRequest request = EmbeddingSearchRequest.builder()
-                .queryEmbedding(queryEmbedding)
-                .maxResults(20) 
-                .build();
-        EmbeddingSearchResult<TextSegment> result = embeddingStore.search(request);
-        
-        if(result.matches().isEmpty()){
+    private String retrieveContext(String queryText) {
+        try {
+            // 1. 生成查询向量
+            List<Float> queryVector = embeddingModel.embed(queryText).content().vectorAsList();
+
+            // 2. 构建混合查询 (Hybrid Search)
+            // 2.1 倒排索引查询 (BM25)
+            Query matchQuery = MatchQuery.of(m -> m.field("text").query(queryText))._toQuery();
+
+            // 2.2 向量查询 (kNN)
+            KnnSearch knnSearch = KnnSearch.of(k -> k
+                    .field("vector")
+                    .queryVector(queryVector)
+                    .numCandidates(100)
+                    .k(20) // Top 20 向量结果
+            );
+
+            // 3. 执行搜索 (使用 RRF 融合排序)
+            SearchResponse<Map> response = elasticsearchClient.search(s -> s
+                    .index(indexName)
+                    .query(matchQuery) // BM25 查询
+                    .knn(knnSearch) // kNN 查询
+                    .rank(r -> r // RRF 融合
+                            .rrf(rrf -> rrf
+                                    .windowSize(20) // 融合窗口大小
+                                    .rankConstant(60)))
+                    .size(20), // 最终取 Top 20 粗排结果
+                    Map.class);
+
+            if (response.hits().hits().isEmpty()) {
+                return "";
+            }
+
+            // 4. 解析结果转换为 TextSegment
+            List<TextSegment> candidates = new ArrayList<>();
+            for (Hit<Map> hit : response.hits().hits()) {
+                Map<String, Object> source = hit.source();
+                if (source != null && source.containsKey("text")) {
+                    String text = (String) source.get("text");
+                    Metadata metadata = new Metadata();
+                    if (source.containsKey("metadata")) {
+                        Map<String, Object> metaMap = (Map<String, Object>) source.get("metadata");
+                        metaMap.forEach((k, v) -> metadata.add(k, v.toString()));
+                    }
+                    candidates.add(TextSegment.from(text, metadata));
+                }
+            }
+
+            // 5. 二次精排 (Rerank Top-20 -> Top-3)
+            if (candidates.isEmpty())
+                return "";
+
+            List<Double> scores = scoringModel.scoreAll(candidates, queryText).content();
+
+            // 构造带分数的对象列表以便排序
+            var ranked = IntStream.range(0, candidates.size())
+                    .mapToObj(i -> new Object() {
+                        final TextSegment segment = candidates.get(i);
+                        final Double score = scores.get(i);
+                    })
+                    .sorted(Comparator.comparingDouble(o -> -o.score)) // 降序
+                    .limit(3) // 取 Top 3
+                    .toList();
+
+            // 6. 拼接最终上下文
+            List<String> contextList = ranked.stream()
+                    .map(item -> {
+                        String text = item.segment.text();
+                        String filename = item.segment.metadata().get("filename");
+                        return String.format("[来源：%s (Score: %.2f)] %s", filename, item.score, text);
+                    })
+                    .collect(Collectors.toList());
+
+            return String.join("\n---\n", contextList);
+
+        } catch (IOException e) {
+            log.error("Elasticsearch 检索失败", e);
             return "";
         }
-
-        List<TextSegment> candidates = result.matches().stream()
-                .map(dev.langchain4j.store.embedding.EmbeddingMatch::embedded)
-                .collect(Collectors.toList());
-
-        // 2. 精排 (Rerank Top-20 -> Top-3)
-        // 注意：scoreAll 返回的是 Response<List<Double>>，需要 .content()
-        List<Double> scores = scoringModel.scoreAll(candidates, query).content();
-        
-        class ScoredSegment {
-            TextSegment segment;
-            Double score;
-            ScoredSegment(TextSegment s, Double v) { segment = s; score = v; }
-        }
-
-        List<ScoredSegment> ranked = java.util.stream.IntStream.range(0, candidates.size())
-                .mapToObj(i -> new ScoredSegment(candidates.get(i), scores.get(i)))
-                .sorted(Comparator.comparingDouble((ScoredSegment s) -> s.score).reversed())
-                .limit(3) 
-                .toList();
-
-        List<String> contextList = ranked.stream()
-                .map(s -> {
-                    String text = s.segment.text();
-                    String source = s.segment.metadata().get("filename");
-                    return String.format("[来源：%s (Score: %.2f)] %s", source, s.score, text);
-                })
-                .collect(Collectors.toList());
-
-        return String.join("\n---\n", contextList);
     }
 
     private boolean isContextDependent(String query) {
-        if (query == null) return true;
+        if (query == null)
+            return true;
         String q = query.toLowerCase();
         String[] sensitiveKeywords = {
                 "我", "你", "您", "谁", "它", "他", "她",
@@ -232,7 +286,7 @@ public class RagService {
         return false;
     }
 
-    private void insertChatHistory(String sessionId, String question, String answer, ModelType modelType){
+    private void insertChatHistory(String sessionId, String question, String answer, ModelType modelType) {
         Long currentUserId = userUtils.getCurrentUserId();
         ChatHistory chatHistory = new ChatHistory()
                 .setSession_id(sessionId)

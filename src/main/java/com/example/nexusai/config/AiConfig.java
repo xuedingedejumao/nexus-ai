@@ -10,6 +10,12 @@ import dev.langchain4j.model.scoring.ScoringModel;
 import dev.langchain4j.store.embedding.EmbeddingStore;
 import dev.langchain4j.store.embedding.elasticsearch.ElasticsearchEmbeddingStore;
 import dev.langchain4j.store.embedding.elasticsearch.ElasticsearchConfigurationKnn;
+import org.apache.http.HttpHost;
+import org.elasticsearch.client.RestClient;
+import co.elastic.clients.elasticsearch.ElasticsearchClient;
+import co.elastic.clients.json.jackson.JacksonJsonpMapper;
+import co.elastic.clients.transport.ElasticsearchTransport;
+import co.elastic.clients.transport.rest_client.RestClientTransport;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -30,7 +36,7 @@ public class AiConfig {
     private String indexName;
 
     @Bean
-    public EmbeddingModel embeddingModel(){
+    public EmbeddingModel embeddingModel() {
         return new BgeSmallZhV15QuantizedEmbeddingModel();
     }
 
@@ -41,8 +47,7 @@ public class AiConfig {
             public Response<Double> score(String text, String query) {
                 double score = dev.langchain4j.store.embedding.CosineSimilarity.between(
                         embeddingModel.embed(text).content(),
-                        embeddingModel.embed(query).content()
-                );
+                        embeddingModel.embed(query).content());
                 return Response.from(score);
             }
 
@@ -74,7 +79,16 @@ public class AiConfig {
     }
 
     @Bean
-    public ChatMemoryProvider chatMemoryProvider(){
+    public ElasticsearchClient elasticsearchClient() {
+        RestClient restClient = RestClient.builder(
+                new HttpHost(esHost, esPort, "http")).build();
+        ElasticsearchTransport transport = new RestClientTransport(
+                restClient, new JacksonJsonpMapper());
+        return new ElasticsearchClient(transport);
+    }
+
+    @Bean
+    public ChatMemoryProvider chatMemoryProvider() {
         return sessionId -> MessageWindowChatMemory.withMaxMessages(10);
     }
 }

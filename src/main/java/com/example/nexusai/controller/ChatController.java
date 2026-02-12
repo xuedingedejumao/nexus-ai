@@ -28,7 +28,7 @@ public class ChatController {
             @RequestParam String query,
             @RequestParam(defaultValue = "NORMAL") String modelType,
             @RequestParam(required = false) String sessionId,
-            Authentication authentication // 👈 1. 注入认证信息
+            Authentication authentication // 1. 注入认证信息
     ) {
         try {
             // 2. 获取当前用户名
@@ -54,8 +54,7 @@ public class ChatController {
                     answer,
                     type.name(),
                     type.name(), // 这里假设你的 ChatResponse 需要两个 modelName
-                    duration
-            ));
+                    duration));
 
         } catch (IllegalArgumentException e) {
             log.error("无效的模型类型: {}", modelType);
@@ -75,7 +74,8 @@ public class ChatController {
             @RequestParam(required = false) String sessionId,
             @RequestParam(defaultValue = "NORMAL") String modelType,
             Authentication authentication // 👈 1. 注入认证信息
-    ){
+    ) {
+
         // 获取用户名
         String username = (authentication != null) ? authentication.getName() : "anonymous";
 

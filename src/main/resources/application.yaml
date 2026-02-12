@@ -24,7 +24,6 @@ langchain4j:
   open-ai:
     chat-model:
       base-url: https://api.deepseek.com/v1
-      # WARNING: API KEY should be moved to environment variable for security
       api-key: sk-06ed1277282342188cf2b79fab5fc00b
   deepseek:
     normal-model:
@@ -68,7 +67,7 @@ resilience4j:
   ratelimiter:
     instances:
       chatApi:
-        limitForPeriod: 10
+        limitForPeriod: 1000000000
         limitRefreshPeriod: 1s
         timeoutDuration: 0
 

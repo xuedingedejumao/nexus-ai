@@ -117,7 +117,6 @@ public class SemanticCacheService {
                 double similarity = 1 - score;
 
                 log.info("Cache Hit Candidate: score(dist)={}, similarity={}", score, similarity);
-
                 if (similarity >= SIMILARITY_THRESHOLD) {
                     log.info("Semantic Cache HIT! Question: {}", userQuestion);
                     return Optional.ofNullable(doc.getString("answer"));
