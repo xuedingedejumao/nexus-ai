@@ -1,6 +1,7 @@
 package com.example.nexusai.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.example.nexusai.common.exception.NexusException;
 import com.example.nexusai.entity.User;
 import com.example.nexusai.mapper.UserMapper;
 import com.example.nexusai.utils.JwtUtils;
@@ -17,41 +18,29 @@ public class AuthService {
     private final JwtUtils jwtUtils;
 
     /**
-     * 登录逻辑
-     * @return 生成的 JWT Token
+     * 登录认证，校验通过后签发 JWT Token。
+     * 无论用户名不存在还是密码错误，均返回统一提示语，防止用户枚举攻击。
      */
     public String login(String username, String password) {
-        // 1. 查询用户
         User user = userMapper.selectOne(
-                new LambdaQueryWrapper<User>().eq(User::getUsername, username)
-        );
+                new LambdaQueryWrapper<User>().eq(User::getUsername, username));
 
-        if (user == null) {
-            throw new RuntimeException("用户不存在");
+        if (user == null || !passwordEncoder.matches(password, user.getPassword())) {
+            throw new NexusException(401, "用户名或密码错误");
         }
 
-        // 2. 校验密码 (注意：第一个参数是明文，第二个是数据库里的密文)
-        if (!passwordEncoder.matches(password, user.getPassword())) {
-            throw new RuntimeException("密码错误");
-        }
-
-        // 3. 生成 Token
         return jwtUtils.generateToken(username);
     }
 
     public void register(String username, String password) {
-        // 1. 检查用户是否已存在
         User exists = userMapper.selectOne(
-                new LambdaQueryWrapper<User>().eq(User::getUsername, username)
-        );
+                new LambdaQueryWrapper<User>().eq(User::getUsername, username));
         if (exists != null) {
-            throw new RuntimeException("用户名已存在");
+            throw new NexusException(400, "用户名已存在");
         }
 
-        // 2. 创建新用户
         User user = new User();
         user.setUsername(username);
-        // 🔑 关键点：一定要用 passwordEncoder 加密后再存
         user.setPassword(passwordEncoder.encode(password));
         user.setRole("USER");
 

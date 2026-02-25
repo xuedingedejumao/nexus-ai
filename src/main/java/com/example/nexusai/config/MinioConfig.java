@@ -1,10 +1,8 @@
 package com.example.nexusai.config;
 
-import dev.langchain4j.service.V;
 import io.minio.BucketExistsArgs;
 import io.minio.MakeBucketArgs;
 import io.minio.MinioClient;
-import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -27,7 +25,7 @@ public class MinioConfig {
     private String bucketName;
 
     @Bean
-    public MinioClient minioClient(){
+    public MinioClient minioClient() {
         MinioClient minio = MinioClient.builder()
                 .endpoint(endpoint)
                 .credentials(accessKey, secretKey)
@@ -35,17 +33,16 @@ public class MinioConfig {
 
         try {
             boolean found = minio.bucketExists(BucketExistsArgs.builder().bucket(bucketName).build());
-            if(!found){
+            if (!found) {
                 minio.makeBucket(MakeBucketArgs.builder().bucket(bucketName).build());
-                log.info("Minio Bucket {} 创建成功", bucketName);
-            }else{
-                log.info("Minio Bucket {} 已存在", bucketName);
+                log.info("MinIO Bucket [{}] 创建成功", bucketName);
+            } else {
+                log.info("MinIO Bucket [{}] 已存在", bucketName);
             }
-        }catch (Exception e){
-            log.error("Minio初始化Bucket失败", e);
+        } catch (Exception e) {
+            log.error("MinIO Bucket 初始化失败", e);
             throw new RuntimeException(e);
         }
-
 
         return minio;
     }

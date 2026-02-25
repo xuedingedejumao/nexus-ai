@@ -15,10 +15,15 @@ import org.springframework.stereotype.Component;
 
 import java.io.InputStream;
 
+/**
+ * Kafka 文档处理消费者：从 MinIO 下载文件 → Tika 解析文本 → 向量化入库。
+ * 与 DocumentService（生产者）配合，实现文件上传与向量化处理的异步解耦。
+ */
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class DocumentListener {
+
     private final DocumentRecordMapper documentRecordMapper;
     private final MinioClient minioClient;
     private final Tika tika = new Tika();
@@ -30,36 +35,34 @@ public class DocumentListener {
     @KafkaListener(topics = "doc-process-topic", groupId = "nexus-group")
     public void processDocument(String docIdStr) {
         Long docId = Long.valueOf(docIdStr);
-        log.info(">> 消费者： 开始处理文档 {}", docId);
+        log.info("开始处理文档, docId={}", docId);
 
         updateStatus(docId, DocStatus.PROCESSING, null);
 
         try {
             DocumentRecord documentRecord = documentRecordMapper.selectById(docId);
             if (documentRecord == null) {
-                log.error("文档记录不存在：{}", docId);
+                log.error("文档记录不存在, docId={}", docId);
                 return;
             }
 
-            InputStream inputStream = minioClient.getObject(
+            try (InputStream inputStream = minioClient.getObject(
                     GetObjectArgs.builder()
                             .bucket(bucketName)
                             .object(documentRecord.getMinioUrl())
-                            .build()
-            );
+                            .build())) {
 
-            String content = tika.parseToString(inputStream);
-
-            ragService.ingest(content, documentRecord.getFilename());
+                String content = tika.parseToString(inputStream);
+                ragService.ingest(content, documentRecord.getFilename());
+            }
 
             updateStatus(docId, DocStatus.COMPLETED, null);
-            log.info("###### 任务完成: 文档ID={}", docId);
+            log.info("文档处理完成, docId={}", docId);
 
-        }catch (Exception e) {
-            log.error("文档处理失败，id: {}", docId, e);
+        } catch (Exception e) {
+            log.error("文档处理失败, docId={}", docId, e);
             updateStatus(docId, DocStatus.FAILED, e.getMessage());
         }
-
     }
 
     private void updateStatus(Long id, DocStatus status, String msg) {
