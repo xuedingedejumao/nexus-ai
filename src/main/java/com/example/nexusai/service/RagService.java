@@ -28,6 +28,7 @@ import co.elastic.clients.elasticsearch.core.SearchResponse;
 import co.elastic.clients.elasticsearch.core.search.Hit;
 import org.springframework.beans.factory.annotation.Value;
 import java.io.IOException;
+
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -182,44 +183,82 @@ public class RagService {
 
     /**
      * 根据用户查询检索相关上下文 (Hybrid Search: BM25 + Vector + Rerank)
+     * 使用应用层 RRF 融合，避免 elasticsearch-java 客户端与服务端 RRF API 字段名不兼容的问题
      */
     private String retrieveContext(String queryText) {
         try {
             // 1. 生成查询向量
             List<Float> queryVector = embeddingModel.embed(queryText).content().vectorAsList();
 
-            // 2. 构建混合查询 (Hybrid Search)
-            // 2.1 倒排索引查询 (BM25)
-            Query matchQuery = MatchQuery.of(m -> m.field("text").query(queryText))._toQuery();
+            // 2. 分别执行 BM25 和 kNN 查询（不再使用服务端 RRF，彻底避免 window_size/rank_window_size 兼容性问题）
 
-            // 2.2 向量查询 (kNN)
+            // 2.1 BM25 倒排索引查询
+            Query matchQuery = MatchQuery.of(m -> m.field("text").query(queryText))._toQuery();
+            SearchResponse<Map> bm25Response = elasticsearchClient.search(s -> s
+                    .index(indexName)
+                    .query(matchQuery)
+                    .size(20),
+                    Map.class);
+
+            // 2.2 kNN 向量查询
             KnnSearch knnSearch = KnnSearch.of(k -> k
                     .field("vector")
                     .queryVector(queryVector)
                     .numCandidates(100)
-                    .k(20) // Top 20 向量结果
-            );
-
-            // 3. 执行搜索 (使用 RRF 融合排序)
-            SearchResponse<Map> response = elasticsearchClient.search(s -> s
+                    .k(20));
+            SearchResponse<Map> knnResponse = elasticsearchClient.search(s -> s
                     .index(indexName)
-                    .query(matchQuery) // BM25 查询
-                    .knn(knnSearch) // kNN 查询
-                    .rank(r -> r // RRF 融合
-                            .rrf(rrf -> rrf
-                                    .rankWindowSize(20L) // 融合窗口大小
-                                    .rankConstant(60L)))
-                    .size(20), // 最终取 Top 20 粗排结果
+                    .knn(knnSearch)
+                    .size(20),
                     Map.class);
 
-            if (response.hits().hits().isEmpty()) {
+            // 3. 应用层 RRF 融合排序
+            // RRF 公式: score = Σ 1 / (rank_constant + rank)
+            final int rankConstant = 60;
+            // docId -> 累加 RRF 分数
+            java.util.LinkedHashMap<String, Double> rrfScores = new java.util.LinkedHashMap<>();
+            // docId -> source 数据
+            java.util.LinkedHashMap<String, Map<String, Object>> docSources = new java.util.LinkedHashMap<>();
+
+            // BM25 结果排名
+            List<Hit<Map>> bm25Hits = bm25Response.hits().hits();
+            for (int rank = 0; rank < bm25Hits.size(); rank++) {
+                Hit<Map> hit = bm25Hits.get(rank);
+                String docId = hit.id();
+                double rrfScore = 1.0 / (rankConstant + rank + 1);
+                rrfScores.merge(docId, rrfScore, Double::sum);
+                if (hit.source() != null) {
+                    docSources.putIfAbsent(docId, hit.source());
+                }
+            }
+
+            // kNN 结果排名
+            List<Hit<Map>> knnHits = knnResponse.hits().hits();
+            for (int rank = 0; rank < knnHits.size(); rank++) {
+                Hit<Map> hit = knnHits.get(rank);
+                String docId = hit.id();
+                double rrfScore = 1.0 / (rankConstant + rank + 1);
+                rrfScores.merge(docId, rrfScore, Double::sum);
+                if (hit.source() != null) {
+                    docSources.putIfAbsent(docId, hit.source());
+                }
+            }
+
+            // 按 RRF 融合分数降序排列，取 Top 20
+            List<String> topDocIds = rrfScores.entrySet().stream()
+                    .sorted(java.util.Map.Entry.<String, Double>comparingByValue().reversed())
+                    .limit(20)
+                    .map(java.util.Map.Entry::getKey)
+                    .toList();
+
+            if (topDocIds.isEmpty()) {
                 return "";
             }
 
             // 4. 解析结果转换为 TextSegment
             List<TextSegment> candidates = new ArrayList<>();
-            for (Hit<Map> hit : response.hits().hits()) {
-                Map<String, Object> source = hit.source();
+            for (String docId : topDocIds) {
+                Map<String, Object> source = docSources.get(docId);
                 if (source != null && source.containsKey("text")) {
                     String text = (String) source.get("text");
                     Metadata metadata = new Metadata();
