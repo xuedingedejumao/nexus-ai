@@ -23,7 +23,7 @@ langchain4j:
   open-ai:
     chat-model:
       base-url: https://api.deepseek.com/v1
-      api-key: sk-06ed1277282342188cf2b79fab5fc00b
+      api-key: ${DEEPSEEK_API_KEY}
   deepseek:
     normal-model:
       model-name: deepseek-chat
