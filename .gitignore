@@ -32,6 +32,11 @@ build/
 ### VS Code ###
 .vscode/
 
+### Secrets ###
+/.env
+src/main/resources/ds_api_key
+src/main/resources/application-local.yaml
+
 ### Obsidian ###
 .obsidian
 volumes/

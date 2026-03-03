@@ -22,7 +22,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import co.elastic.clients.elasticsearch.ElasticsearchClient;
-import co.elastic.clients.elasticsearch._types.KnnSearch;
+import co.elastic.clients.elasticsearch._types.KnnQuery;
 import co.elastic.clients.elasticsearch._types.query_dsl.MatchQuery;
 import co.elastic.clients.elasticsearch._types.query_dsl.Query;
 import co.elastic.clients.elasticsearch.core.SearchResponse;
@@ -190,7 +190,7 @@ public class RagService {
             Query matchQuery = MatchQuery.of(m -> m.field("text").query(queryText))._toQuery();
 
             // 3. kNN 向量查询
-            KnnSearch knnSearch = KnnSearch.of(k -> k
+            KnnQuery knnQuery = KnnQuery.of(k -> k
                     .field("vector")
                     .queryVector(queryVector)
                     .numCandidates(100)
@@ -200,10 +200,10 @@ public class RagService {
             SearchResponse<Map> response = elasticsearchClient.search(s -> s
                     .index(indexName)
                     .query(matchQuery)
-                    .knn(knnSearch)
+                    .knn(knnQuery)
                     .rank(r -> r
                             .rrf(rrf -> rrf
-                                    .rankWindowSize(20L)
+                                    .windowSize(20L)
                                     .rankConstant(60L)))
                     .size(20),
                     Map.class);

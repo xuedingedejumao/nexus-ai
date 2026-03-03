@@ -83,7 +83,7 @@ public class LangChainConfig {
                 .modelName(normalModelName)
                 .timeout(Duration.ofSeconds(normalTimeout))
                 .logRequests(true)
-                .logResponses(true)
+                .logResponses(false)
                 .build();
     }
 
@@ -95,7 +95,7 @@ public class LangChainConfig {
                 .modelName(reasoningModelName)
                 .timeout(Duration.ofSeconds(reasoningTimeout))
                 .logRequests(true)
-                .logResponses(true)
+                .logResponses(false)
                 .build();
     }
 }

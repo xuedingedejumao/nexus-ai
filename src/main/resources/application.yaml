@@ -23,7 +23,7 @@ langchain4j:
   open-ai:
     chat-model:
       base-url: https://api.deepseek.com/v1
-      api-key: ${DEEPSEEK_API_KEY}
+      api-key: ${DEEPSEEK_API_KEY:}
   deepseek:
     normal-model:
       model-name: deepseek-chat
@@ -45,7 +45,7 @@ nexus:
     secret-key: ${MINIO_SECRET_KEY:minioadmin}
     bucket-name: nexus-files
   jwt:
-    secret: ${JWT_SECRET_KEY:NexusAI_Secure_Secret_Key_For_Jwt_Generation_2026_Keep_It_Safe}
+    secret: ${JWT_SECRET_KEY:defaultDevSecretKeyPleaseChangeInProduction}
     expiration: 86400000
 
 kafka:
